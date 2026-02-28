@@ -15,17 +15,20 @@ type SourceCodeEntry = {
   Proxy: string;
 };
 
+const debug =
+  process.env.NODE_ENV !== "production" ? console.log : () => {};
+
 async function etherscanFetch<T>(url: string): Promise<T> {
   await rateLimiter.acquire();
   const urlObj = new URL(url);
   const action = urlObj.searchParams.get("action");
   const module = urlObj.searchParams.get("module");
-  console.log(`[etherscan] ${module}/${action} → (live)`);
+  debug(`[etherscan] ${module}/${action} → (live)`);
 
   const res = await fetch(url);
   const data: EtherscanResponse<T> = await res.json();
 
-  console.log(`[etherscan] ${module}/${action} ← status=${data.status} message="${data.message}" resultType=${typeof data.result} ${Array.isArray(data.result) ? `len=${data.result.length}` : typeof data.result === "string" ? `"${data.result.slice(0, 80)}"` : ""}`);
+  debug(`[etherscan] ${module}/${action} ← status=${data.status} message="${data.message}"`);
 
   if (data.status === "0") {
     throw new Error(typeof data.result === "string" ? data.result : data.message);
@@ -46,7 +49,7 @@ async function fetchAbiRaw(
   const key = `abi:${chain}:${address.toLowerCase()}`;
   const cached = cache.get<string | null>(key);
   if (cached !== undefined) {
-    console.log(`[cache] HIT ${key}`);
+    debug(`[cache] HIT ${key}`);
     return cached;
   }
 
@@ -78,7 +81,7 @@ async function fetchSourceInfo(
   const key = `src:${chain}:${address.toLowerCase()}`;
   const cached = cache.get<SourceCodeEntry | null>(key);
   if (cached !== undefined) {
-    console.log(`[cache] HIT ${key}`);
+    debug(`[cache] HIT ${key}`);
     return cached;
   }
 
@@ -115,25 +118,25 @@ export async function fetchAbiWithProxyFallback(
   const name = sourceInfo?.ContractName || "";
   const implAddress = sourceInfo?.Implementation || "";
 
-  console.log(`[proxy] address=${address} name="${name}" proxy=${sourceInfo?.Proxy} implementation="${implAddress}"`);
+  debug(`[proxy] address=${address} name="${name}" proxy=${sourceInfo?.Proxy} implementation="${implAddress}"`);
 
   // If Etherscan identifies a proxy with an implementation, fetch the real ABI
   if (implAddress && /^0x[0-9a-fA-F]{40}$/.test(implAddress)) {
-    console.log(`[proxy] fetching implementation ABI from ${implAddress}`);
+    debug(`[proxy] fetching implementation ABI from ${implAddress}`);
     const implAbi = await fetchAbiRaw(implAddress, chain);
     if (implAbi) {
-      console.log(`[proxy] implementation ABI found: name="${name}" abiLen=${implAbi.length}`);
+      debug(`[proxy] implementation ABI found: name="${name}" abiLen=${implAbi.length}`);
       return { abi: implAbi, name, isProxy: true };
     }
-    console.log(`[proxy] implementation ABI not found, falling back to direct`);
+    debug(`[proxy] implementation ABI not found, falling back to direct`);
   }
 
   if (abiRaw) {
-    console.log(`[proxy] using direct ABI: name="${name}" abiLen=${abiRaw.length}`);
+    debug(`[proxy] using direct ABI: name="${name}" abiLen=${abiRaw.length}`);
     return { abi: abiRaw, name, isProxy: false };
   }
 
-  console.log(`[proxy] no ABI found at all`);
+  debug(`[proxy] no ABI found at all`);
   return null;
 }
 
@@ -142,7 +145,7 @@ export async function fetchLatestBlockNumber(chain: Chain): Promise<number> {
   const key = `block:${chain}`;
   const cached = cache.get<number>(key);
   if (cached !== undefined) {
-    console.log(`[cache] HIT ${key} → ${cached}`);
+    debug(`[cache] HIT ${key} → ${cached}`);
     return cached;
   }
 
@@ -175,7 +178,7 @@ export async function fetchEventLogs(
   const key = `logs:${chain}:${address.toLowerCase()}:${effectiveFromBlock}:${effectiveToBlock}`;
   const cached = cache.get<RawLog[]>(key);
   if (cached !== undefined) {
-    console.log(`[cache] HIT ${key} → ${cached.length} logs`);
+    debug(`[cache] HIT ${key} → ${cached.length} logs`);
     return cached;
   }
 

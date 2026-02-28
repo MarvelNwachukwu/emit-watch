@@ -27,20 +27,29 @@ export async function POST(request: Request) {
   const { address, chain } = parsed.data as { address: string; chain: Chain };
 
   try {
-    console.log(`[abi-route] fetching ABI for ${address} on ${chain}`);
     const result = await fetchAbiWithProxyFallback(address, chain);
 
     if (!result) {
-      console.log(`[abi-route] no ABI found → 404`);
       return NextResponse.json({ error: "ABI not found" }, { status: 404 });
     }
 
-    const abi = JSON.parse(result.abi);
-    const eventNames = abi
-      .filter((item: { type: string }) => item.type === "event")
-      .map((item: { name: string }) => item.name);
+    let abi: unknown[];
+    try {
+      abi = JSON.parse(result.abi);
+    } catch {
+      return NextResponse.json(
+        { error: "Failed to parse ABI from Etherscan" },
+        { status: 502 }
+      );
+    }
 
-    console.log(`[abi-route] success: name="${result.name}" isProxy=${result.isProxy} events=[${eventNames.join(", ")}] abiEntries=${abi.length}`);
+    const eventNames = [
+      ...new Set(
+        abi
+          .filter((item: unknown) => (item as { type: string }).type === "event")
+          .map((item: unknown) => (item as { name: string }).name)
+      ),
+    ];
 
     return NextResponse.json({
       abi,
@@ -57,6 +66,9 @@ export async function POST(request: Request) {
         { status: 429 }
       );
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "An internal error occurred. Please try again later." },
+      { status: 500 }
+    );
   }
 }

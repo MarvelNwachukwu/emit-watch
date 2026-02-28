@@ -33,10 +33,7 @@ export async function POST(request: Request) {
   const abi = parsed.data.abi as unknown as Abi;
 
   try {
-    console.log(`[events-route] fetching logs for ${address} on ${chain} fromBlock=${fromBlock} toBlock=${toBlock}`);
     const rawLogs = await fetchEventLogs(address, chain, fromBlock, toBlock);
-    console.log(`[events-route] got ${rawLogs.length} raw logs`);
-
     const events = decodeEvents(abi, rawLogs);
 
     // Sort newest first
@@ -46,7 +43,6 @@ export async function POST(request: Request) {
       ? events[events.length - 1].blockNumber
       : null;
 
-    console.log(`[events-route] returning ${events.length} events, oldestBlock=${oldestBlock}`);
     return NextResponse.json({ events, oldestBlock });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -57,6 +53,9 @@ export async function POST(request: Request) {
         { status: 429 }
       );
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "An internal error occurred. Please try again later." },
+      { status: 500 }
+    );
   }
 }

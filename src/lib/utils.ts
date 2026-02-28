@@ -18,6 +18,7 @@ export function formatRelativeTime(timestamp: number): string {
   const now = Math.floor(Date.now() / 1000);
   const diff = now - timestamp;
 
+  if (diff < 0) return "just now";
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -37,12 +38,13 @@ export function isValidAddress(address: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(address);
 }
 
-export function bigintReplacer(_key: string, value: unknown): unknown {
-  return typeof value === "bigint" ? value.toString() : value;
-}
-
-export async function copyToClipboard(text: string): Promise<void> {
-  await navigator.clipboard.writeText(text);
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -129,10 +131,15 @@ export function eventsToCsv(
   ]);
 
   const escape = (s: string) => {
-    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
+    let val = s;
+    // Prevent CSV formula injection from on-chain data
+    if (/^[=+\-@\t\r]/.test(val)) {
+      val = `'${val}`;
     }
-    return s;
+    if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+      return `"${val.replace(/"/g, '""')}"`;
+    }
+    return val;
   };
 
   return [header.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");

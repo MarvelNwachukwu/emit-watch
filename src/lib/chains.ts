@@ -21,10 +21,14 @@ export const CHAINS: Record<Chain, ChainConfig> = {
 export const ETHERSCAN_V2_BASE = "https://api.etherscan.io/v2/api";
 
 export function getEtherscanUrl(chain: Chain, params: Record<string, string>): string {
+  const apiKey = process.env.ETHERSCAN_API_KEY;
+  if (!apiKey) {
+    throw new Error("ETHERSCAN_API_KEY environment variable is required");
+  }
   const config = CHAINS[chain];
   const searchParams = new URLSearchParams({
     chainid: String(config.chainId),
-    apikey: process.env.ETHERSCAN_API_KEY ?? "",
+    apikey: apiKey,
     ...params,
   });
   return `${ETHERSCAN_V2_BASE}?${searchParams.toString()}`;

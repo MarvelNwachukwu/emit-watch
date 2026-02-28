@@ -210,7 +210,10 @@ export function EventApp() {
   // Auto-fetch from URL params on mount
   useEffect(() => {
     const address = searchParams.get("address");
-    const chain = (searchParams.get("chain") as Chain) ?? "ethereum";
+    const rawChain = searchParams.get("chain");
+    const chain: Chain = (["ethereum", "arbitrum", "polygon"] as Chain[]).includes(rawChain as Chain)
+      ? (rawChain as Chain)
+      : "ethereum";
     if (address && /^0x[0-9a-fA-F]{40}$/.test(address)) {
       handleSubmit(address, chain);
     }
@@ -396,7 +399,7 @@ export function EventApp() {
             <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
               Decode and explore smart contract events on
               <br />
-              Ethereum, Arbitrum, and Base
+              Ethereum, Arbitrum, and Polygon
             </p>
           </div>
         </div>
