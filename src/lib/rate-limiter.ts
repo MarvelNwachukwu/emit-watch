@@ -31,7 +31,7 @@ class TokenBucket {
     if (this.draining) return;
     this.draining = true;
 
-    const process = () => {
+    const tick = () => {
       this.refill();
       while (this.pending.length > 0 && this.tokens >= 1) {
         this.tokens -= 1;
@@ -39,13 +39,13 @@ class TokenBucket {
       }
       if (this.pending.length > 0) {
         const waitTime = ((1 - this.tokens) / this.refillRate) * 1000;
-        setTimeout(process, waitTime);
+        setTimeout(tick, waitTime);
       } else {
         this.draining = false;
       }
     };
 
-    process();
+    tick();
   }
 }
 

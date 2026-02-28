@@ -28,10 +28,11 @@ function argsToStrings(args: Record<string, unknown> | readonly unknown[] | unde
   return result;
 }
 
+const debug =
+  process.env.NODE_ENV !== "production" ? console.log : () => {};
+
 export function decodeEvents(abi: Abi, rawLogs: RawLog[]): DecodedEvent[] {
-  console.log(`[decoder] decoding ${rawLogs.length} raw logs with ABI containing ${abi.length} entries`);
-  const eventEntries = abi.filter((item) => "type" in item && item.type === "event");
-  console.log(`[decoder] ABI has ${eventEntries.length} event definitions:`, eventEntries.map((e) => ("name" in e ? e.name : "?")).join(", "));
+  debug(`[decoder] decoding ${rawLogs.length} raw logs with ${abi.length} ABI entries`);
 
   const decoded: DecodedEvent[] = [];
   let skipped = 0;
@@ -61,14 +62,11 @@ export function decodeEvents(abi: Abi, rawLogs: RawLog[]): DecodedEvent[] {
         logIndex: parseInt(log.logIndex, 16),
         args: argsToStrings(result.args as unknown as Record<string, unknown>),
       });
-    } catch (err) {
+    } catch {
       skipped++;
-      if (skipped <= 3) {
-        console.log(`[decoder] failed to decode log topic0=${log.topics[0]?.slice(0, 18)}... err=${err instanceof Error ? err.message.slice(0, 80) : "unknown"}`);
-      }
     }
   }
 
-  console.log(`[decoder] result: ${decoded.length} decoded, ${skipped} skipped`);
+  debug(`[decoder] result: ${decoded.length} decoded, ${skipped} skipped`);
   return decoded;
 }

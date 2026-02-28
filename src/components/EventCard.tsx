@@ -105,7 +105,7 @@ export function EventCard({
         borderLeftWidth: "3px",
         borderLeftColor: color,
         boxShadow: `inset 3px 0 12px -6px ${color}40`,
-        animationDelay: `${index * 50}ms`,
+        animationDelay: `${Math.min(index, 10) * 50}ms`,
       }}
     >
       {/* Header */}

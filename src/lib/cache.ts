@@ -33,6 +33,15 @@ class MemoryCache {
         this.store.delete(key);
       }
     }
+    // Hard cap: evict oldest entries if still too large
+    if (this.store.size > 400) {
+      const entries = [...this.store.entries()]
+        .sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+      const toRemove = this.store.size - 300;
+      for (let i = 0; i < toRemove; i++) {
+        this.store.delete(entries[i][0]);
+      }
+    }
   }
 }
 
