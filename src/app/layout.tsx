@@ -20,6 +20,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://emit-watch.vercel.app"),
   title: "Event Watch — Smart Contract Event Listener",
   description:
     "Paste any smart contract address, auto-fetch the ABI, and view a live feed of decoded events.",
