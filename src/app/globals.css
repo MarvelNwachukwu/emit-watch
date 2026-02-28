@@ -1,26 +1,158 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Class-based dark mode for Tailwind v4 */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+
+  /* Event type accent colors — vivid neons against dark */
+  --color-event-swap: #f0b429;
+  --color-event-transfer: #22d3ee;
+  --color-event-approval: #34d399;
+  --color-event-mint: #a78bfa;
+  --color-event-burn: #fb7185;
+  --color-event-sync: #38bdf8;
+  --color-event-deposit: #f472b6;
+  --color-event-withdraw: #fb923c;
+  --color-event-default: #94a3b8;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-outfit);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Light theme ─── */
+:root {
+  --background: #f5f5f0;
+  --foreground: #1a1a18;
+  --surface: #ffffff;
+  --surface-elevated: #fafaf8;
+  --border: #e5e5df;
+  --border-subtle: #ededea;
+  --muted: #78786e;
+  --accent: #c48a15;
+  --accent-dim: #c48a1520;
 }
 
+/* ─── Dark theme (default) ─── */
+.dark {
+  --background: #09090b;
+  --foreground: #e4e4e0;
+  --surface: #111113;
+  --surface-elevated: #19191c;
+  --border: #222225;
+  --border-subtle: #1a1a1d;
+  --muted: #6e6e78;
+  --accent: #e8a427;
+  --accent-dim: #e8a42718;
+}
+
+/* ─── Base ─── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Dot grid background pattern */
+.dark body {
+  background-image:
+    radial-gradient(circle, #ffffff06 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+body:not(.dark body) {
+  background-image:
+    radial-gradient(circle, #00000006 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* ─── Animations ─── */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.35s ease-out both;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--border-subtle) 25%,
+    var(--border) 50%,
+    var(--border-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─── Card glow effect ─── */
+.event-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.event-card:hover {
+  transform: translateY(-1px);
+}
+
+/* ─── Focus rings ─── */
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--accent);
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: var(--accent-dim);
+  color: var(--foreground);
 }
