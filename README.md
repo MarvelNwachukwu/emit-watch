@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Event Watch
+
+Paste any smart contract address, auto-fetch the ABI, and view a live feed of decoded events.
+
+Supports **Ethereum**, **Arbitrum**, and **Polygon** via the Etherscan V2 unified API.
+
+## Features
+
+- Auto-fetches and parses ABIs (handles proxy contracts transparently)
+- Live polling mode with 12-second intervals
+- Event type filtering and address search across args
+- Smart value formatting (wei, 6-decimal tokens, addresses)
+- CSV export with formula injection protection
+- Manual ABI input fallback for unverified contracts
+- Dark/light theme with system preference detection
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+
+- pnpm
+
+### Environment Variables
+
+Copy `.env.example` or create `.env.local`:
+
+```
+ETHERSCAN_API_KEY=your_etherscan_api_key
+NEXT_PUBLIC_SITE_URL=https://your-domain.com  # optional, for OG image
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Get a free API key at [etherscan.io/apis](https://etherscan.io/apis).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Run
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm install
+pnpm dev
+```
 
-## Learn More
+Open [http://localhost:3000](http://localhost:3000).
 
-To learn more about Next.js, take a look at the following resources:
+## Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js 16 (App Router)
+- React 19
+- Tailwind CSS v4
+- viem (event decoding)
+- Zod v4 (API validation)
+- Etherscan V2 API
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+  app/
+    api/contract/       # ABI + events API routes
+    layout.tsx          # Shell, theme, fonts
+    page.tsx            # Entry point
+    opengraph-image.tsx # Dynamic OG image
+    icon.svg            # Favicon
+  components/           # AddressInput, EventCard, EventFeed, etc.
+  lib/
+    explorer.ts         # Etherscan client with proxy detection
+    decoder.ts          # viem event log decoder
+    cache.ts            # In-memory TTL cache
+    rate-limiter.ts     # Token bucket rate limiter
+    chains.ts           # Chain configs
+    types.ts            # Shared types
+    utils.ts            # Formatting, CSV export, helpers
+```
