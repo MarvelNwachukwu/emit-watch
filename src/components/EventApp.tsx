@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, useContext } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { Abi } from "viem";
 import type { Chain, ContractMeta, DecodedEvent } from "@/lib/types";
 import { eventsToCsv, truncateAddress } from "@/lib/utils";
 import { useWatchlist } from "@/contexts/WatchlistContext";
+import { AuthContext } from "@/contexts/AuthContext";
 import {
   useContractAbi,
   useContractEvents,
@@ -18,6 +19,7 @@ import { EventFilter } from "./EventFilter";
 import { EventFeed } from "./EventFeed";
 import { AnalyticsSummary } from "./AnalyticsSummary";
 import { AnalyticsPanel } from "./AnalyticsPanel";
+import { UpgradeModal } from "./UpgradeModal";
 import { DashboardLayout } from "./DashboardLayout";
 import type { ViewMode } from "./EventFeed";
 
@@ -25,6 +27,8 @@ export function EventApp() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { state: watchlist, dispatch: wlDispatch } = useWatchlist();
+  const auth = useContext(AuthContext);
+  const isPaidUser = auth?.tier === "pro";
 
   // Active contract address/chain (set from URL, address input, or watchlist)
   const [activeAddress, setActiveAddress] = useState<string | null>(null);
@@ -35,6 +39,7 @@ export function EventApp() {
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "card";
     return (localStorage.getItem("eventwatch:viewMode") as ViewMode) || "card";
@@ -236,6 +241,8 @@ export function EventApp() {
     }
   }
 
+  const FREE_WATCH_LIMIT = 5;
+
   function handleAddToWatchlist() {
     if (!contractMeta) return;
     const already = watchlist.entries.some(
@@ -244,6 +251,11 @@ export function EventApp() {
         e.chain === contractMeta.chain
     );
     if (already) return;
+    // Enforce free tier limit
+    if (!isPaidUser && watchlist.entries.length >= FREE_WATCH_LIMIT) {
+      setUpgradeOpen(true);
+      return;
+    }
     wlDispatch({
       type: "ADD",
       entry: {
@@ -550,7 +562,8 @@ export function EventApp() {
             {analyticsOpen && (
               <AnalyticsPanel
                 events={displayEvents}
-                isPaidUser={false}
+                isPaidUser={isPaidUser}
+                onUpgrade={() => setUpgradeOpen(true)}
               />
             )}
 
@@ -621,6 +634,8 @@ export function EventApp() {
           </div>
         )}
       </div>
+
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
     </DashboardLayout>
   );
 }

@@ -2,6 +2,7 @@
 
 import { ThemeToggle } from "./ThemeToggle";
 import { ConnectButton } from "./ConnectButton";
+import { TierBadge } from "./TierBadge";
 
 export function AppHeader() {
   return (
@@ -26,6 +27,7 @@ export function AppHeader() {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <TierBadge />
         <ConnectButton />
         <ThemeToggle />
       </div>
