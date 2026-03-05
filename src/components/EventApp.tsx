@@ -20,6 +20,8 @@ import { EventFeed } from "./EventFeed";
 import { AnalyticsSummary } from "./AnalyticsSummary";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { UpgradeModal } from "./UpgradeModal";
+import { AlertsPanel } from "./AlertsPanel";
+import { PremiumGate } from "./PremiumGate";
 import { DashboardLayout } from "./DashboardLayout";
 import type { ViewMode } from "./EventFeed";
 
@@ -39,6 +41,7 @@ export function EventApp() {
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "card";
@@ -565,6 +568,37 @@ export function EventApp() {
                 isPaidUser={isPaidUser}
                 onUpgrade={() => setUpgradeOpen(true)}
               />
+            )}
+
+            {/* Alerts toggle + panel */}
+            {auth?.status === "authenticated" && (
+              <>
+                <button
+                  onClick={() => setAlertsOpen((o) => !o)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all ${
+                    alertsOpen
+                      ? "border-accent/30 bg-accent/5 text-accent"
+                      : "border-border bg-surface text-muted hover:border-accent/30 hover:text-foreground"
+                  }`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {alertsOpen ? "Hide Alerts" : "Alerts"}
+                </button>
+                {alertsOpen && (
+                  <PremiumGate isPaid={isPaidUser} feature="Alerts" onUpgrade={() => setUpgradeOpen(true)}>
+                    <AlertsPanel
+                      watchlistEntries={watchlist.entries.map((e) => ({
+                        address: e.address,
+                        chain: e.chain,
+                        label: e.label,
+                      }))}
+                    />
+                  </PremiumGate>
+                )}
+              </>
             )}
 
             <EventFeed
