@@ -1,7 +1,7 @@
-export function LoadingSkeleton() {
+export function LoadingSkeleton({ count = 4 }: { count?: number } = {}) {
   return (
     <div className="flex flex-col gap-3">
-      {[...Array(4)].map((_, i) => (
+      {[...Array(count)].map((_, i) => (
         <div
           key={i}
           className="overflow-hidden rounded-xl border border-border bg-surface"

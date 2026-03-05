@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { DecodedEvent, Chain } from "@/lib/types";
 import { CHAINS } from "@/lib/chains";
 import {
@@ -34,19 +34,30 @@ export function EventCard({
   event,
   chain,
   index = 0,
+  contractDecimals,
 }: {
   event: DecodedEvent;
   chain: Chain;
   index?: number;
+  contractDecimals?: number;
 }) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const explorerUrl = CHAINS[chain].explorerUrl;
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const effectiveChain = event.chain ?? chain;
+  const explorerUrl = CHAINS[effectiveChain].explorerUrl;
   const color = getEventColor(event.eventName);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   async function handleCopy(key: string, value: string) {
     await copyToClipboard(value);
     setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 1500);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopiedKey(null), 1500);
   }
 
   const isAddress = (val: string) => /^0x[0-9a-fA-F]{40}$/.test(val);
@@ -76,8 +87,9 @@ export function EventCard({
       );
     }
 
-    // Format numeric values
-    const { display, isLargeNumber } = formatValue(value);
+    // Format numeric values — pass decimals for value/amount-like args
+    const isValueArg = /^(value|amount|wad|amount0|amount1|assets|shares)$/i.test(key);
+    const { display, isLargeNumber } = formatValue(value, isValueArg ? contractDecimals : undefined);
     if (isLargeNumber) {
       return (
         <span className="font-mono text-foreground" title={value}>
@@ -116,6 +128,11 @@ export function EventCard({
         >
           {event.eventName}
         </span>
+        {event.contractLabel && (
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-accent bg-accent/10 border border-accent/20">
+            {event.contractLabel}
+          </span>
+        )}
         <a
           href={`${explorerUrl}/block/${event.blockNumber}`}
           target="_blank"
@@ -157,7 +174,7 @@ export function EventCard({
           rel="noopener noreferrer"
           className="group/link inline-flex items-center gap-1.5 text-[11px] text-muted transition-colors hover:text-accent"
         >
-          View on {CHAINS[chain].name}
+          View on {CHAINS[effectiveChain].name}
           <ExternalIcon />
         </a>
       </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Outfit } from "next/font/google";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Providers } from "@/components/Providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,9 +50,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} antialiased`}
       >
-        <div className="mx-auto flex min-h-screen max-w-2xl flex-col px-5 pb-12 pt-8 sm:px-8">
+        <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-5 pb-12 pt-8 sm:px-8">
           {/* Header */}
-          <header className="mb-10 flex items-center justify-between">
+          <header className="mx-auto mb-10 flex w-full max-w-2xl items-center justify-between">
             <div className="flex items-center gap-3">
               {/* Logo mark — stylized radar/pulse */}
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
@@ -76,12 +77,14 @@ export default function RootLayout({
           </header>
 
           {/* Accent line */}
-          <div className="mb-8 h-px w-full bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
+          <div className="mx-auto mb-8 h-px w-full max-w-2xl bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
 
-          <main className="flex-1">{children}</main>
+          <Providers>
+            <main className="flex-1">{children}</main>
+          </Providers>
 
           {/* Footer */}
-          <footer className="mt-16 border-t border-border pt-6 pb-2">
+          <footer className="mx-auto mt-16 w-full max-w-2xl border-t border-border pt-6 pb-2">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               {/* Brand */}
               <div className="flex items-center gap-2.5">

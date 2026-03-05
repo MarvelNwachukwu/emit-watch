@@ -3,18 +3,12 @@
 import { useState } from "react";
 import type { Chain } from "@/lib/types";
 import { isValidAddress } from "@/lib/utils";
+import { POPULAR_CONTRACTS } from "@/lib/contracts";
 
 const CHAIN_OPTIONS: { value: Chain; label: string }[] = [
   { value: "ethereum", label: "Ethereum" },
   { value: "arbitrum", label: "Arbitrum" },
   { value: "polygon", label: "Polygon" },
-];
-
-const POPULAR_CONTRACTS: { name: string; address: string; chain: Chain }[] = [
-  { name: "WETH", address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", chain: "ethereum" },
-  { name: "USDC", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", chain: "ethereum" },
-  { name: "Uniswap V3 Router", address: "0xE592427A0AEce92De3Edee1F18E0157C05861564", chain: "ethereum" },
-  { name: "USDT (Polygon)", address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", chain: "polygon" },
 ];
 
 export function AddressInput({
@@ -65,6 +59,7 @@ export function AddressInput({
               if (error) setError(null);
             }}
             placeholder="Paste contract address (0x...)"
+            aria-label="Contract address"
             className="focus-ring h-12 w-full rounded-xl border border-border bg-surface pl-10 pr-4 font-mono text-[13px] text-foreground placeholder:text-muted/50 transition-colors hover:border-accent/30 focus:border-accent"
             spellCheck={false}
             autoComplete="off"
@@ -75,6 +70,7 @@ export function AddressInput({
             <select
               value={chain}
               onChange={(e) => setChain(e.target.value as Chain)}
+              aria-label="Select blockchain network"
               className="focus-ring h-12 appearance-none rounded-xl border border-border bg-surface pl-4 pr-10 text-[13px] font-medium text-foreground transition-colors hover:border-accent/30 focus:border-accent"
             >
               {CHAIN_OPTIONS.map((opt) => (

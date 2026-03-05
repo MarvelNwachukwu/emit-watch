@@ -25,7 +25,7 @@ async function etherscanFetch<T>(url: string): Promise<T> {
   const module = urlObj.searchParams.get("module");
   debug(`[etherscan] ${module}/${action} → (live)`);
 
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   const data: EtherscanResponse<T> = await res.json();
 
   debug(`[etherscan] ${module}/${action} ← status=${data.status} message="${data.message}"`);
@@ -155,7 +155,8 @@ export async function fetchLatestBlockNumber(chain: Chain): Promise<number> {
       action: "eth_blockNumber",
     })
   );
-  const blockNum = parseInt(result, 16);
+  const blockNum = Number(result);
+  if (!Number.isFinite(blockNum)) throw new Error(`Invalid block number: ${result}`);
   cache.set(key, blockNum, TTL.BLOCK_NUMBER);
   return blockNum;
 }

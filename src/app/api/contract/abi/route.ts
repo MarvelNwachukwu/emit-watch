@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request", details: parsed.error.issues },
+      { error: "Invalid request", details: parsed.error.issues.map((i) => ({ field: i.path.map(String).join("."), message: i.message })) },
       { status: 400 }
     );
   }
@@ -46,7 +46,10 @@ export async function POST(request: Request) {
     const eventNames = [
       ...new Set(
         abi
-          .filter((item: unknown) => (item as { type: string }).type === "event")
+          .filter((item: unknown) => {
+            const i = item as { type?: string; name?: string };
+            return i.type === "event" && typeof i.name === "string";
+          })
           .map((item: unknown) => (item as { name: string }).name)
       ),
     ];

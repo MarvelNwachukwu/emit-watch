@@ -4,10 +4,20 @@ import { useState } from "react";
 
 export function ManualAbiInput({
   onSubmit,
+  address,
 }: {
   onSubmit: (abi: unknown[]) => void;
+  address?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => {
+    if (!address) return "";
+    try {
+      const cached = localStorage.getItem(`eventwatch:abi:${address}`);
+      return cached ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit() {
@@ -18,6 +28,13 @@ export function ManualAbiInput({
         return;
       }
       setError(null);
+      if (address) {
+        try {
+          localStorage.setItem(`eventwatch:abi:${address}`, text);
+        } catch {
+          // localStorage full or unavailable — continue anyway
+        }
+      }
       onSubmit(parsed);
     } catch {
       setError("Invalid JSON — paste a valid ABI array");

@@ -8,9 +8,9 @@ import type { Chain } from "@/lib/types";
 const bodySchema = z.object({
   address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
   chain: z.enum(["ethereum", "arbitrum", "polygon"]),
-  abi: z.array(z.record(z.string(), z.unknown())),
-  fromBlock: z.number().optional(),
-  toBlock: z.number().optional(),
+  abi: z.array(z.record(z.string(), z.unknown())).max(500),
+  fromBlock: z.number().int().nonnegative().optional(),
+  toBlock: z.number().int().nonnegative().optional(),
 });
 
 export async function POST(request: Request) {
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request", details: parsed.error.issues },
+      { error: "Invalid request", details: parsed.error.issues.map((i) => ({ field: i.path.map(String).join("."), message: i.message })) },
       { status: 400 }
     );
   }

@@ -17,6 +17,10 @@ class MemoryCache {
     return entry.value as T;
   }
 
+  delete(key: string): boolean {
+    return this.store.delete(key);
+  }
+
   set<T>(key: string, value: T, ttlMs: number): void {
     this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
 

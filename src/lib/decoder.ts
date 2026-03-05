@@ -31,6 +31,12 @@ function argsToStrings(args: Record<string, unknown> | readonly unknown[] | unde
 const debug =
   process.env.NODE_ENV !== "production" ? console.log : () => {};
 
+/** Safely parse a hex string to number, returning 0 for invalid values. */
+function safeParseHex(value: string): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function decodeEvents(abi: Abi, rawLogs: RawLog[]): DecodedEvent[] {
   debug(`[decoder] decoding ${rawLogs.length} raw logs with ${abi.length} ABI entries`);
 
@@ -56,10 +62,10 @@ export function decodeEvents(abi: Abi, rawLogs: RawLog[]): DecodedEvent[] {
 
       decoded.push({
         eventName: result.eventName,
-        blockNumber: parseInt(log.blockNumber, 16),
+        blockNumber: safeParseHex(log.blockNumber),
         transactionHash: log.transactionHash,
-        timestamp: parseInt(log.timeStamp, 16),
-        logIndex: parseInt(log.logIndex, 16),
+        timestamp: safeParseHex(log.timeStamp),
+        logIndex: safeParseHex(log.logIndex),
         args: argsToStrings(result.args as unknown as Record<string, unknown>),
       });
     } catch {

@@ -15,6 +15,9 @@ export type DecodedEvent = {
   timestamp: number;
   args: Record<string, string>;
   logIndex: number;
+  contractAddress?: string;
+  contractLabel?: string;
+  chain?: Chain;
 };
 
 export type ContractMeta = {
