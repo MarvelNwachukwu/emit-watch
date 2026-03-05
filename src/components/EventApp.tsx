@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import type { Abi } from "viem";
 import type { Chain, ContractMeta, DecodedEvent } from "@/lib/types";
 import { eventsToCsv, truncateAddress } from "@/lib/utils";
-import { getContractLabel } from "@/lib/contracts";
 import { useWatchlist } from "@/contexts/WatchlistContext";
 import {
   useContractAbi,
@@ -17,6 +16,8 @@ import { ManualAbiInput } from "./ManualAbiInput";
 import { ContractHeader } from "./ContractHeader";
 import { EventFilter } from "./EventFilter";
 import { EventFeed } from "./EventFeed";
+import { AnalyticsSummary } from "./AnalyticsSummary";
+import { AnalyticsPanel } from "./AnalyticsPanel";
 import { DashboardLayout } from "./DashboardLayout";
 import type { ViewMode } from "./EventFeed";
 
@@ -33,6 +34,7 @@ export function EventApp() {
   // UI state
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === "undefined") return "card";
     return (localStorage.getItem("eventwatch:viewMode") as ViewMode) || "card";
@@ -68,7 +70,7 @@ export function EventApp() {
         address: activeAddress,
         chain: activeChain,
         abi: abiQuery.data.abi,
-        name: getContractLabel(activeAddress, activeChain) ?? abiQuery.data.name,
+        name: abiQuery.data.name,
         eventNames: abiQuery.data.eventNames,
         isProxy: abiQuery.data.isProxy,
       };
@@ -209,21 +211,19 @@ export function EventApp() {
     [router, searchParams]
   );
 
-  // Load contract when watchlist active entry changes
-  const activeEntry = useMemo(
-    () => watchlist.entries.find((e) => e.id === watchlist.activeId) ?? null,
-    [watchlist.entries, watchlist.activeId]
-  );
+  // Load contract when watchlist active ID changes
+  // Intentionally only reacts to activeId — not activeAddress/activeChain,
+  // which would create a cycle when the user selects a contract via other means.
+  const prevActiveIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeEntry) {
-      const isSame =
-        activeEntry.address.toLowerCase() === activeAddress?.toLowerCase() &&
-        activeEntry.chain === activeChain;
-      if (!isSame) {
-        handleSubmit(activeEntry.address, activeEntry.chain);
+    if (watchlist.activeId && watchlist.activeId !== prevActiveIdRef.current) {
+      const entry = watchlist.entries.find((e) => e.id === watchlist.activeId);
+      if (entry) {
+        handleSubmit(entry.address, entry.chain);
       }
     }
-  }, [activeEntry, activeAddress, activeChain, handleSubmit]);
+    prevActiveIdRef.current = watchlist.activeId;
+  }, [watchlist.activeId, watchlist.entries, handleSubmit]);
 
   function handleManualAbi(abi: unknown[]) {
     if (!activeAddress) return;
@@ -374,7 +374,14 @@ export function EventApp() {
             {showContractView && (
               <div className="flex items-start justify-between gap-3">
                 <ContractHeader meta={contractMeta} events={events} />
-                {!isInWatchlist && (
+                {isInWatchlist ? (
+                  <span className="mt-1 flex shrink-0 items-center gap-1.5 rounded-lg border border-[#34d399]/20 bg-[#34d399]/5 px-3 py-1.5 text-[11px] font-medium text-[#34d399]">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 8.5l3.5 3.5L13 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Watching
+                  </span>
+                ) : (
                   <button
                     onClick={handleAddToWatchlist}
                     className="mt-1 flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[11px] font-medium text-muted transition-all hover:border-accent/30 hover:text-foreground"
@@ -533,6 +540,19 @@ export function EventApp() {
                 </p>
               )}
             </div>
+
+            {/* Analytics summary + panel */}
+            <AnalyticsSummary
+              events={displayEvents}
+              analyticsOpen={analyticsOpen}
+              onToggleAnalytics={() => setAnalyticsOpen((o) => !o)}
+            />
+            {analyticsOpen && (
+              <AnalyticsPanel
+                events={displayEvents}
+                isPaidUser={false}
+              />
+            )}
 
             <EventFeed
               events={displayEvents}

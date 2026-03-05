@@ -19,11 +19,3 @@ export const POPULAR_CONTRACTS: PopularContract[] = [
   // Polygon
   { name: "USDT (Poly)", address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", chain: "polygon" },
 ];
-
-/** Look up a friendly name for a known contract address. */
-export function getContractLabel(address: string, chain: Chain): string | undefined {
-  const lower = address.toLowerCase();
-  return POPULAR_CONTRACTS.find(
-    (c) => c.address.toLowerCase() === lower && c.chain === chain
-  )?.name;
-}

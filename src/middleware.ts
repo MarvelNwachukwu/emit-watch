@@ -50,5 +50,10 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: "/api/contract/:path*",
+  matcher: [
+    "/api/contract/:path*",
+    "/api/auth/:path*",
+    "/api/watchlist/:path*",
+    "/api/alerts/:path*",
+  ],
 };

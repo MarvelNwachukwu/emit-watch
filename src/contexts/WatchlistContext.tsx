@@ -6,6 +6,7 @@ import {
   useReducer,
   useEffect,
   useRef,
+  useCallback,
   type ReactNode,
   type Dispatch,
 } from "react";
@@ -15,6 +16,7 @@ import {
   loadWatchlist,
   saveWatchlist,
 } from "@/lib/watchlist";
+import { AuthContext } from "@/contexts/AuthContext";
 
 type WatchlistAction =
   | { type: "LOAD"; state: WatchlistState }
@@ -62,10 +64,16 @@ type WatchlistContextValue = {
 const WatchlistContext = createContext<WatchlistContextValue | null>(null);
 
 export function WatchlistProvider({ children }: { children: ReactNode }) {
+  const auth = useContext(AuthContext);
+  const isAuthenticated = auth?.status === "authenticated";
+  const userId = auth?.userId;
+  const getAccessToken = auth?.getAccessToken;
+
   const [state, dispatch] = useReducer(reducer, { entries: [], activeId: null });
   const hasLoaded = useRef(false);
+  const hasSynced = useRef(false);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount (always — it's the starting point)
   useEffect(() => {
     dispatch({ type: "LOAD", state: loadWatchlist() });
     hasLoaded.current = true;
@@ -77,6 +85,45 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
       saveWatchlist(state);
     }
   }, [state]);
+
+  // Sync localStorage → DB on first sign-in
+  const syncToDb = useCallback(async () => {
+    if (!userId || !getAccessToken || hasSynced.current) return;
+    hasSynced.current = true;
+
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const localState = loadWatchlist();
+    if (localState.entries.length === 0) return;
+
+    try {
+      await fetch("/api/watchlist/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "x-user-id": userId,
+        },
+        body: JSON.stringify({
+          entries: localState.entries.map((e) => ({
+            address: e.address,
+            chain: e.chain,
+            label: e.label,
+          })),
+        }),
+      });
+    } catch {
+      // Sync failed — localStorage remains the source of truth
+      hasSynced.current = false;
+    }
+  }, [userId, getAccessToken]);
+
+  useEffect(() => {
+    if (isAuthenticated && userId) {
+      syncToDb();
+    }
+  }, [isAuthenticated, userId, syncToDb]);
 
   return (
     <WatchlistContext.Provider value={{ state, dispatch }}>

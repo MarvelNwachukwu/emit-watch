@@ -31,14 +31,21 @@ export function WatchlistItem({
   }
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12px] transition-colors cursor-pointer ${
         isActive
           ? "bg-accent/10 text-foreground"
           : "text-muted hover:bg-surface-elevated hover:text-foreground"
       }`}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
     >
       {/* Active indicator */}
       <span
@@ -95,6 +102,6 @@ export function WatchlistItem({
           <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
-    </button>
+    </div>
   );
 }
