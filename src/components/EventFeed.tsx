@@ -1,8 +1,12 @@
 "use client";
 
+import { useEffect, useRef, useCallback } from "react";
 import type { DecodedEvent, Chain } from "@/lib/types";
 import { EventCard } from "./EventCard";
+import { EventTable } from "./EventTable";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+
+export type ViewMode = "card" | "table";
 
 export function EventFeed({
   events,
@@ -11,6 +15,8 @@ export function EventFeed({
   isLoadingMore,
   hasMore,
   onLoadMore,
+  contractDecimals,
+  viewMode = "card",
 }: {
   events: DecodedEvent[];
   chain: Chain;
@@ -18,7 +24,34 @@ export function EventFeed({
   isLoadingMore: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  contractDecimals?: number;
+  viewMode?: ViewMode;
 }) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+
+  useEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  }, [onLoadMore]);
+
+  const handleIntersect = useCallback((entries: IntersectionObserverEntry[]) => {
+    if (entries[0].isIntersecting) {
+      onLoadMoreRef.current();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(handleIntersect, {
+      rootMargin: "200px",
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, handleIntersect]);
+
   if (isLoading) {
     return <LoadingSkeleton />;
   }
@@ -45,38 +78,24 @@ export function EventFeed({
 
   return (
     <div className="flex flex-col gap-3">
-      {events.map((event, i) => (
-        <EventCard
-          key={`${event.transactionHash}-${event.logIndex}-${i}`}
-          event={event}
-          chain={chain}
-          index={i}
-        />
-      ))}
+      {viewMode === "table" ? (
+        <EventTable events={events} chain={chain} contractDecimals={contractDecimals} />
+      ) : (
+        events.map((event, i) => (
+          <EventCard
+            key={`${event.transactionHash}-${event.logIndex}-${i}`}
+            event={event}
+            chain={event.chain ?? chain}
+            index={i}
+            contractDecimals={contractDecimals}
+          />
+        ))
+      )}
 
       {hasMore && (
-        <button
-          onClick={onLoadMore}
-          disabled={isLoadingMore}
-          className="group mx-auto mt-2 flex items-center gap-2 rounded-xl border border-border bg-surface px-6 py-3 text-[12px] font-medium text-muted transition-all hover:border-accent/30 hover:text-foreground disabled:opacity-50"
-        >
-          {isLoadingMore ? (
-            <>
-              <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-                <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-              Fetching older events...
-            </>
-          ) : (
-            <>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="transition-transform group-hover:translate-y-0.5">
-                <path d="M8 3v10M4 9l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Load Older Events
-            </>
-          )}
-        </button>
+        <div ref={sentinelRef}>
+          {isLoadingMore && <LoadingSkeleton count={3} />}
+        </div>
       )}
     </div>
   );

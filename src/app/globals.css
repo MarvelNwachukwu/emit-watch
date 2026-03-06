@@ -14,16 +14,16 @@
   --color-accent: var(--accent);
   --color-accent-dim: var(--accent-dim);
 
-  /* Event type accent colors — vivid neons against dark */
+  /* Event type accent colors */
   --color-event-swap: #f0b429;
-  --color-event-transfer: #22d3ee;
-  --color-event-approval: #34d399;
-  --color-event-mint: #a78bfa;
+  --color-event-transfer: #a78bfa;
+  --color-event-approval: #38bdf8;
+  --color-event-mint: #22d3ee;
   --color-event-burn: #fb7185;
-  --color-event-sync: #38bdf8;
-  --color-event-deposit: #f472b6;
+  --color-event-sync: #94a3b8;
+  --color-event-deposit: #34d399;
   --color-event-withdraw: #fb923c;
-  --color-event-default: #94a3b8;
+  --color-event-default: #6e6e78;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -70,7 +70,7 @@ body {
   background-size: 24px 24px;
 }
 
-body:not(.dark body) {
+:root:not(.dark) body {
   background-image:
     radial-gradient(circle, #00000006 1px, transparent 1px);
   background-size: 24px 24px;

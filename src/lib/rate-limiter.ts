@@ -2,14 +2,23 @@ class TokenBucket {
   private tokens: number;
   private readonly maxTokens: number;
   private readonly refillRate: number;
+  private readonly maxQueueSize: number;
+  private readonly queueTimeout: number;
   private lastRefill: number;
   private pending: Array<() => void> = [];
   private draining = false;
 
-  constructor(maxTokens: number, refillRate: number) {
+  constructor(
+    maxTokens: number,
+    refillRate: number,
+    maxQueueSize = 50,
+    queueTimeout = 15_000
+  ) {
     this.tokens = maxTokens;
     this.maxTokens = maxTokens;
     this.refillRate = refillRate;
+    this.maxQueueSize = maxQueueSize;
+    this.queueTimeout = queueTimeout;
     this.lastRefill = Date.now();
   }
 
@@ -21,8 +30,20 @@ class TokenBucket {
   }
 
   async acquire(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      this.pending.push(resolve);
+    if (this.pending.length >= this.maxQueueSize) {
+      throw new Error("Rate limiter queue full — too many concurrent requests");
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = this.pending.indexOf(wrappedResolve);
+        if (idx !== -1) this.pending.splice(idx, 1);
+        reject(new Error("Rate limiter timeout — request took too long to acquire a token"));
+      }, this.queueTimeout);
+      const wrappedResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      this.pending.push(wrappedResolve);
       this.drain();
     });
   }

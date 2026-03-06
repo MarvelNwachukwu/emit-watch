@@ -1,3 +1,16 @@
+const NAMED_EVENT_COLORS: Record<string, string> = {
+  Transfer: "var(--color-event-transfer)",
+  Approval: "var(--color-event-approval)",
+  ApprovalForAll: "var(--color-event-approval)",
+  Swap: "var(--color-event-swap)",
+  Mint: "var(--color-event-mint)",
+  Burn: "var(--color-event-burn)",
+  Sync: "var(--color-event-sync)",
+  Deposit: "var(--color-event-deposit)",
+  Withdrawal: "var(--color-event-withdraw)",
+  Withdraw: "var(--color-event-withdraw)",
+};
+
 const EVENT_COLORS = [
   "var(--color-event-swap)",
   "var(--color-event-transfer)",
@@ -27,6 +40,8 @@ export function formatRelativeTime(timestamp: number): string {
 }
 
 export function getEventColor(eventName: string): string {
+  if (NAMED_EVENT_COLORS[eventName]) return NAMED_EVENT_COLORS[eventName];
+  // Hash fallback for unknown event types
   let hash = 0;
   for (let i = 0; i < eventName.length; i++) {
     hash = (hash * 31 + eventName.charCodeAt(i)) | 0;
@@ -49,10 +64,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
 /**
  * Format a numeric string for display.
- * Detects wei-like values (>= 1e15) and formats with decimal places.
- * Otherwise adds comma separators.
+ * When `decimals` is provided, uses it directly. Otherwise falls back to heuristics.
  */
-export function formatValue(value: string): { display: string; isLargeNumber: boolean } {
+export function formatValue(value: string, decimals?: number): { display: string; isLargeNumber: boolean } {
   // Not a pure number string? Return as-is
   if (!/^-?\d+$/.test(value)) {
     return { display: value, isLargeNumber: false };
@@ -62,24 +76,45 @@ export function formatValue(value: string): { display: string; isLargeNumber: bo
   const abs = num < 0n ? -num : num;
   const sign = num < 0n ? "-" : "";
 
-  // Likely wei (18 decimals) — values >= 1e15
+  // If decimals are known, use them directly
+  if (decimals !== undefined && decimals > 0) {
+    const divisor = 10n ** BigInt(decimals);
+    const whole = abs / divisor;
+    const frac = abs % divisor;
+    const fracDigits = Math.min(decimals, 4);
+    const fracStr = frac
+      .toString()
+      .padStart(decimals, "0")
+      .slice(0, fracDigits)
+      .replace(/0+$/, "");
+    const wholeFormatted = whole.toLocaleString("en-US");
+    const display = fracStr
+      ? `${sign}${wholeFormatted}.${fracStr}`
+      : `${sign}${wholeFormatted}`;
+    if (abs >= divisor) {
+      return { display: `${display} (${formatCompact(abs, decimals)})`, isLargeNumber: true };
+    }
+    return { display, isLargeNumber: abs > 0n };
+  }
+
+  // Heuristic: Likely wei (18 decimals) — values >= 1e15
   if (abs >= 1_000_000_000_000_000n) {
     const whole = abs / 1_000_000_000_000_000_000n;
     const frac = abs % 1_000_000_000_000_000_000n;
     const fracStr = frac.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-    const wholeFormatted = whole.toLocaleString();
+    const wholeFormatted = whole.toLocaleString("en-US");
     const display = fracStr
       ? `${sign}${wholeFormatted}.${fracStr}`
       : `${sign}${wholeFormatted}`;
     return { display: `${display} (${formatCompact(abs, 18)})`, isLargeNumber: true };
   }
 
-  // Likely 6-decimal token (USDC/USDT) — values >= 1e8 that are exact multiples of 1e4
+  // Heuristic: Likely 6-decimal token (USDC/USDT) — values >= 1e8 that are exact multiples of 1e4
   if (abs >= 100_000_000n && abs % 10_000n === 0n) {
     const whole = abs / 1_000_000n;
     const frac = abs % 1_000_000n;
     const fracStr = frac.toString().padStart(6, "0").slice(0, 2).replace(/0+$/, "");
-    const wholeFormatted = whole.toLocaleString();
+    const wholeFormatted = whole.toLocaleString("en-US");
     if (fracStr) {
       return { display: `${sign}${wholeFormatted}.${fracStr}`, isLargeNumber: true };
     }
@@ -87,7 +122,7 @@ export function formatValue(value: string): { display: string; isLargeNumber: bo
   }
 
   // Regular number — add commas
-  return { display: `${sign}${abs.toLocaleString()}`, isLargeNumber: false };
+  return { display: `${sign}${abs.toLocaleString("en-US")}`, isLargeNumber: false };
 }
 
 function formatCompact(abs: bigint, decimals: number): string {
@@ -95,7 +130,7 @@ function formatCompact(abs: bigint, decimals: number): string {
   const whole = abs / divisor;
   if (whole >= 1_000_000n) return `${(Number(whole) / 1_000_000).toFixed(2)}M`;
   if (whole >= 1_000n) return `${(Number(whole) / 1_000).toFixed(2)}K`;
-  return whole.toLocaleString();
+  return whole.toLocaleString("en-US");
 }
 
 /**

@@ -1,86 +1,170 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, useContext } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { Abi } from "viem";
 import type { Chain, ContractMeta, DecodedEvent } from "@/lib/types";
-import { eventsToCsv, isValidAddress } from "@/lib/utils";
+import { eventsToCsv, truncateAddress } from "@/lib/utils";
+import { useWatchlist } from "@/contexts/WatchlistContext";
+import { AuthContext } from "@/contexts/AuthContext";
+import {
+  useContractAbi,
+  useContractEvents,
+  useContractDecimals,
+} from "@/hooks/useContractData";
 import { AddressInput } from "./AddressInput";
 import { ManualAbiInput } from "./ManualAbiInput";
 import { ContractHeader } from "./ContractHeader";
 import { EventFilter } from "./EventFilter";
 import { EventFeed } from "./EventFeed";
+import { AnalyticsSummary } from "./AnalyticsSummary";
+import { AnalyticsPanel } from "./AnalyticsPanel";
+import { UpgradeModal } from "./UpgradeModal";
+import { AlertsPanel } from "./AlertsPanel";
+import { PremiumGate } from "./PremiumGate";
+import { DashboardLayout } from "./DashboardLayout";
+import type { ViewMode } from "./EventFeed";
 
 export function EventApp() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { state: watchlist, dispatch: wlDispatch } = useWatchlist();
+  const auth = useContext(AuthContext);
+  const isPaidUser = auth?.tier === "pro";
 
-  const [contractMeta, setContractMeta] = useState<ContractMeta | null>(null);
-  const [events, setEvents] = useState<DecodedEvent[]>([]);
+  // Active contract address/chain (set from URL, address input, or watchlist)
+  const [activeAddress, setActiveAddress] = useState<string | null>(null);
+  const [activeChain, setActiveChain] = useState<Chain>("ethereum");
+  const [manualAbi, setManualAbi] = useState<Abi | null>(null);
+
+  // UI state
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [needsManualAbi, setNeedsManualAbi] = useState(false);
-  const [oldestBlock, setOldestBlock] = useState<number | null>(null);
-  const [pendingAddress, setPendingAddress] = useState<string | null>(null);
-  const [pendingChain, setPendingChain] = useState<Chain>("ethereum");
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === "undefined") return "card";
+    return (localStorage.getItem("eventwatch:viewMode") as ViewMode) || "card";
+  });
 
-  // Live mode
+  // Live mode (kept for P1, P2 will enhance)
   const [isLive, setIsLive] = useState(false);
   const [newEventCount, setNewEventCount] = useState(0);
   const liveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const newestBlockRef = useRef<number | null>(null);
+  const [liveEvents, setLiveEvents] = useState<DecodedEvent[]>([]);
 
-  const [isFetchingAbi, startAbiTransition] = useTransition();
-  const [isFetchingEvents, startEventsTransition] = useTransition();
-  const [isLoadingMore, startLoadMoreTransition] = useTransition();
+  // Events cache for unified timeline (key: "chain:address")
+  const [eventsMap, setEventsMap] = useState<Record<string, DecodedEvent[]>>({});
 
-  const fetchEvents = useCallback(
-    (meta: ContractMeta, toBlock?: number, retryCount = 0) => {
-      const transition = toBlock ? startLoadMoreTransition : startEventsTransition;
-      transition(async () => {
-        try {
-          const res = await fetch("/api/contract/events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              address: meta.address,
-              chain: meta.chain,
-              abi: meta.abi,
-              toBlock,
-            }),
-          });
-          const data = await res.json();
+  // ──────────── TanStack Query hooks ────────────
 
-          if (!res.ok) {
-            // Auto-retry on rate limit (up to 2 times)
-            if (res.status === 429 && retryCount < 2) {
-              setTimeout(() => fetchEvents(meta, toBlock, retryCount + 1), 2000);
-              return;
-            }
-            setError(data.error ?? "Failed to fetch events");
-            return;
-          }
+  // Disable ABI query when manual ABI is provided
+  const abiQuery = useContractAbi(manualAbi ? null : activeAddress, activeChain);
+  const decimalsQuery = useContractDecimals(activeAddress, activeChain);
 
-          setEvents((prev) =>
-            toBlock ? [...prev, ...data.events] : data.events
-          );
-          setOldestBlock(data.oldestBlock);
-          setError(null);
+  // Build contractMeta from ABI data or manual ABI
+  const contractMeta: ContractMeta | null = useMemo(() => {
+    if (manualAbi && activeAddress) {
+      const items = manualAbi as unknown as Array<{ type?: string; name?: string }>;
+      const eventNames = items
+        .filter((item) => item.type === "event")
+        .map((item) => item.name ?? "Unknown");
+      return { address: activeAddress, chain: activeChain, abi: manualAbi, eventNames };
+    }
+    if (abiQuery.data && activeAddress) {
+      return {
+        address: activeAddress,
+        chain: activeChain,
+        abi: abiQuery.data.abi,
+        name: abiQuery.data.name,
+        eventNames: abiQuery.data.eventNames,
+        isProxy: abiQuery.data.isProxy,
+      };
+    }
+    return null;
+  }, [activeAddress, activeChain, abiQuery.data, manualAbi]);
 
-          // Track newest block for live mode
-          if (!toBlock && data.events.length > 0) {
-            newestBlockRef.current = data.events[0].blockNumber;
-          }
-        } catch {
-          setError("Network error — check your connection");
-        }
-      });
-    },
-    []
+  // Events infinite query (paginated historical events)
+  const eventsQuery = useContractEvents(contractMeta);
+
+  // Flatten infinite query pages
+  const paginatedEvents = useMemo(
+    () => eventsQuery.data?.pages.flatMap((p) => p.events) ?? [],
+    [eventsQuery.data]
   );
 
-  // Live mode polling
+  // Combined events: live (newest) + paginated (older)
+  const events = useMemo(
+    () => [...liveEvents, ...paginatedEvents],
+    [liveEvents, paginatedEvents]
+  );
+
+  // Track newest block for live polling
+  useEffect(() => {
+    if (events.length > 0) {
+      newestBlockRef.current = events[0].blockNumber;
+    }
+  }, [events]);
+
+  // Update eventsMap for unified timeline (only when event count changes)
+  const eventsLengthRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    if (contractMeta && events.length > 0) {
+      const key = `${contractMeta.chain}:${contractMeta.address.toLowerCase()}`;
+      if (eventsLengthRef.current[key] !== events.length) {
+        eventsLengthRef.current[key] = events.length;
+        setEventsMap((prev) => ({ ...prev, [key]: events }));
+      }
+    }
+  }, [contractMeta, events]);
+
+  // ──────────── Unified timeline ────────────
+
+  const isAllMode = watchlist.entries.length > 1 && watchlist.activeId === null;
+
+  const unifiedEvents = useMemo(() => {
+    if (!isAllMode) return [];
+    const all: DecodedEvent[] = [];
+    for (const entry of watchlist.entries) {
+      const key = `${entry.chain}:${entry.address.toLowerCase()}`;
+      const cached = eventsMap[key];
+      if (cached) {
+        all.push(
+          ...cached.map((e) => ({
+            ...e,
+            contractAddress: entry.address,
+            contractLabel: entry.label,
+            chain: entry.chain,
+          }))
+        );
+      }
+    }
+    return all.sort((a, b) => b.timestamp - a.timestamp);
+  }, [isAllMode, watchlist.entries, eventsMap]);
+
+  // Event counts for sidebar
+  const eventCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const entry of watchlist.entries) {
+      const key = `${entry.chain}:${entry.address.toLowerCase()}`;
+      counts[key] = eventsMap[key]?.length ?? 0;
+    }
+    return counts;
+  }, [watchlist.entries, eventsMap]);
+
+  // ──────────── Error handling ────────────
+
+  const needsManualAbi = abiQuery.error?.message === "ABI_NOT_FOUND";
+  const displayError = useMemo(() => {
+    if (abiQuery.error && !needsManualAbi) return abiQuery.error.message;
+    if (eventsQuery.error) return eventsQuery.error.message;
+    return null;
+  }, [abiQuery.error, needsManualAbi, eventsQuery.error]);
+
+  // ──────────── Live polling ────────────
+
   const pollNewEvents = useCallback(async () => {
     if (!contractMeta || !newestBlockRef.current) return;
     try {
@@ -96,10 +180,9 @@ export function EventApp() {
       });
       const data = await res.json();
       if (res.ok && data.events.length > 0) {
-        setEvents((prev) => [...data.events, ...prev]);
-        setNewEventCount((c) => c + data.events.length);
+        setLiveEvents((prev) => [...data.events, ...prev].slice(0, 500));
         newestBlockRef.current = data.events[0].blockNumber;
-        // Clear "new" indicator after 3s
+        setNewEventCount((c) => c + data.events.length);
         setTimeout(() => setNewEventCount(0), 3000);
       }
     } catch {
@@ -108,324 +191,485 @@ export function EventApp() {
   }, [contractMeta]);
 
   useEffect(() => {
-    if (isLive && contractMeta) {
-      liveIntervalRef.current = setInterval(pollNewEvents, 12000);
-      return () => {
-        if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
-      };
-    } else {
-      if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
-    }
+    if (!isLive || !contractMeta) return;
+    const id = setInterval(pollNewEvents, 12000);
+    return () => clearInterval(id);
   }, [isLive, contractMeta, pollNewEvents]);
+
+  // ──────────── Handlers ────────────
 
   const handleSubmit = useCallback(
     (address: string, chain: Chain) => {
-      setContractMeta(null);
-      setEvents([]);
+      setActiveAddress(address);
+      setActiveChain(chain);
+      setManualAbi(null);
       setActiveFilter(null);
       setAddressSearch("");
-      setError(null);
-      setNeedsManualAbi(false);
-      setOldestBlock(null);
       setIsLive(false);
       setNewEventCount(0);
-      setPendingAddress(address);
-      setPendingChain(chain);
+      setLiveEvents([]);
+      newestBlockRef.current = null;
 
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(searchParams.toString());
       params.set("address", address);
       params.set("chain", chain);
+      params.delete("event");
       router.replace(`?${params.toString()}`, { scroll: false });
-
-      startAbiTransition(async () => {
-        try {
-          const res = await fetch("/api/contract/abi", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address, chain }),
-          });
-          const data = await res.json();
-
-          if (!res.ok) {
-            if (res.status === 404) {
-              setNeedsManualAbi(true);
-              return;
-            }
-            setError(data.error ?? "Failed to fetch ABI");
-            return;
-          }
-
-          const meta: ContractMeta = {
-            address,
-            chain,
-            abi: data.abi as Abi,
-            name: data.name,
-            eventNames: data.eventNames,
-            isProxy: data.isProxy,
-          };
-          setContractMeta(meta);
-          fetchEvents(meta);
-        } catch {
-          setError("Network error — check your connection");
-        }
-      });
     },
-    [router, fetchEvents]
+    [router, searchParams]
   );
 
-  function handleManualAbi(abi: unknown[]) {
-    if (!pendingAddress) return;
-    const eventNames = (abi as Array<{ type?: string; name?: string }>)
-      .filter((item) => item.type === "event")
-      .map((item) => item.name ?? "Unknown");
+  // Load contract when watchlist active ID changes
+  // Intentionally only reacts to activeId — not activeAddress/activeChain,
+  // which would create a cycle when the user selects a contract via other means.
+  const prevActiveIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (watchlist.activeId && watchlist.activeId !== prevActiveIdRef.current) {
+      const entry = watchlist.entries.find((e) => e.id === watchlist.activeId);
+      if (entry) {
+        handleSubmit(entry.address, entry.chain);
+      }
+    }
+    prevActiveIdRef.current = watchlist.activeId;
+  }, [watchlist.activeId, watchlist.entries, handleSubmit]);
 
-    const meta: ContractMeta = {
-      address: pendingAddress,
-      chain: pendingChain,
-      abi: abi as Abi,
-      eventNames,
-    };
-    setContractMeta(meta);
-    setNeedsManualAbi(false);
-    fetchEvents(meta);
+  function handleManualAbi(abi: unknown[]) {
+    if (!activeAddress) return;
+    setManualAbi(abi as Abi);
   }
 
   function handleLoadMore() {
-    if (!contractMeta || !oldestBlock) return;
-    fetchEvents(contractMeta, oldestBlock - 1);
+    if (eventsQuery.hasNextPage && !eventsQuery.isFetchingNextPage) {
+      eventsQuery.fetchNextPage();
+    }
   }
 
+  const FREE_WATCH_LIMIT = 5;
+
+  function handleAddToWatchlist() {
+    if (!contractMeta) return;
+    const already = watchlist.entries.some(
+      (e) =>
+        e.address.toLowerCase() === contractMeta.address.toLowerCase() &&
+        e.chain === contractMeta.chain
+    );
+    if (already) return;
+    // Enforce free tier limit
+    if (!isPaidUser && watchlist.entries.length >= FREE_WATCH_LIMIT) {
+      setUpgradeOpen(true);
+      return;
+    }
+    wlDispatch({
+      type: "ADD",
+      entry: {
+        id: crypto.randomUUID(),
+        address: contractMeta.address,
+        chain: contractMeta.chain,
+        label: contractMeta.name || truncateAddress(contractMeta.address),
+        addedAt: Date.now(),
+      },
+    });
+  }
+
+  const isInWatchlist = contractMeta
+    ? watchlist.entries.some(
+        (e) =>
+          e.address.toLowerCase() === contractMeta.address.toLowerCase() &&
+          e.chain === contractMeta.chain
+      )
+    : false;
+
+  const handleFilterChange = useCallback(
+    (filter: string | null) => {
+      setActiveFilter(filter);
+      const params = new URLSearchParams(searchParams.toString());
+      if (filter) params.set("event", filter);
+      else params.delete("event");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [searchParams, router]
+  );
+
   function handleExportCsv() {
-    const csv = eventsToCsv(filteredEvents);
+    const csv = eventsToCsv(displayEvents);
     if (!csv) return;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `events-${contractMeta?.name || contractMeta?.address?.slice(0, 10)}.csv`;
+    a.download = `events-${contractMeta?.name || contractMeta?.address?.slice(0, 10) || "all"}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   // Auto-fetch from URL params on mount
+  const mountedRef = useRef(false);
   useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
     const address = searchParams.get("address");
     const rawChain = searchParams.get("chain");
-    const chain: Chain = (["ethereum", "arbitrum", "polygon"] as Chain[]).includes(rawChain as Chain)
+    const eventParam = searchParams.get("event");
+    const chain: Chain = (["ethereum", "arbitrum", "polygon"] as Chain[]).includes(
+      rawChain as Chain
+    )
       ? (rawChain as Chain)
       : "ethereum";
     if (address && /^0x[0-9a-fA-F]{40}$/.test(address)) {
-      handleSubmit(address, chain);
+      if (eventParam) setActiveFilter(eventParam);
+      setActiveAddress(address);
+      setActiveChain(chain);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
-  // Apply filters
-  let filteredEvents = activeFilter
-    ? events.filter((e) => e.eventName === activeFilter)
-    : events;
+  // ──────────── Derived display state ────────────
 
-  // Address search filter
-  if (addressSearch.trim()) {
-    const searchLower = addressSearch.trim().toLowerCase();
-    filteredEvents = filteredEvents.filter((e) =>
-      Object.values(e.args).some((v) => v.toLowerCase().includes(searchLower))
-    );
-  }
+  const rawEvents = isAllMode ? unifiedEvents : events;
+  const filterEventNames = isAllMode
+    ? [...new Set(unifiedEvents.map((e) => e.eventName))]
+    : contractMeta?.eventNames ?? [];
 
-  const isLoading = isFetchingAbi || isFetchingEvents;
+  const displayEvents = useMemo(() => {
+    let result = activeFilter
+      ? rawEvents.filter((e) => e.eventName === activeFilter)
+      : rawEvents;
+    if (addressSearch.trim()) {
+      const searchLower = addressSearch.trim().toLowerCase();
+      result = result.filter((e) =>
+        Object.values(e.args).some((v) => v.toLowerCase().includes(searchLower))
+      );
+    }
+    return result;
+  }, [rawEvents, activeFilter, addressSearch]);
+
+  const isLoading = abiQuery.isLoading || eventsQuery.isLoading;
+  const contractDecimals = decimalsQuery.data ?? undefined;
+  const showContractView = contractMeta && !abiQuery.isLoading && !isAllMode;
+  const showContent = showContractView || isAllMode;
 
   return (
-    <div className="flex flex-col gap-6">
-      <AddressInput
-        onSubmit={handleSubmit}
-        isLoading={isLoading}
-        initialAddress={searchParams.get("address") ?? undefined}
-        initialChain={(searchParams.get("chain") as Chain) ?? undefined}
-      />
+    <DashboardLayout eventCounts={eventCounts}>
+      <div className="flex flex-col gap-6">
+        <AddressInput
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          initialAddress={searchParams.get("address") ?? undefined}
+          initialChain={(searchParams.get("chain") as Chain) ?? undefined}
+        />
 
-      {/* Error banner */}
-      {error && (
-        <div className="animate-fade-up flex items-center gap-3 rounded-xl border border-[#fb7185]/20 bg-[#fb7185]/5 px-5 py-3.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#fb7185]/15">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#fb7185]">
-              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+        {/* Error banner */}
+        {displayError && (
+          <div className="animate-fade-up flex items-center gap-3 rounded-xl border border-[#fb7185]/20 bg-[#fb7185]/5 px-5 py-3.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#fb7185]/15">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-[#fb7185]">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <p className="flex-1 text-[13px] text-[#fb7185]">{displayError}</p>
+            <button
+              onClick={() => {
+                if (abiQuery.error) abiQuery.refetch();
+                else if (eventsQuery.error) eventsQuery.refetch();
+              }}
+              className="rounded-lg border border-[#fb7185]/20 px-3 py-1 text-[11px] font-medium text-[#fb7185] transition-colors hover:bg-[#fb7185]/10"
+            >
+              Retry
+            </button>
           </div>
-          <p className="flex-1 text-[13px] text-[#fb7185]">{error}</p>
-          <button
-            onClick={() => {
-              if (pendingAddress) handleSubmit(pendingAddress, pendingChain);
-            }}
-            className="rounded-lg border border-[#fb7185]/20 px-3 py-1 text-[11px] font-medium text-[#fb7185] transition-colors hover:bg-[#fb7185]/10"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+        )}
 
-      {needsManualAbi && <ManualAbiInput onSubmit={handleManualAbi} />}
+        {needsManualAbi && (
+          <ManualAbiInput onSubmit={handleManualAbi} address={activeAddress ?? undefined} />
+        )}
 
-      {contractMeta && !isFetchingAbi && (
-        <div className="flex flex-col gap-5">
-          <ContractHeader meta={contractMeta} events={events} />
-
-          {/* Toolbar: filters, search, live toggle, export */}
-          <div className="flex flex-col gap-3">
-            {/* Row 1: Event type filter pills */}
-            {contractMeta.eventNames.length > 0 && (
-              <EventFilter
-                eventNames={contractMeta.eventNames}
-                activeFilter={activeFilter}
-                onFilter={setActiveFilter}
-              />
-            )}
-
-            {/* Row 2: Address search + live toggle + export */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              {/* Address search */}
-              <div className="relative flex-1">
-                <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted/50">
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M11.5 11.5L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <input
-                  type="text"
-                  value={addressSearch}
-                  onChange={(e) => setAddressSearch(e.target.value)}
-                  placeholder="Filter by address in args..."
-                  className="focus-ring h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 font-mono text-[11px] text-foreground placeholder:text-muted/40 transition-colors hover:border-accent/30 focus:border-accent"
-                  spellCheck={false}
-                />
-                {addressSearch && (
+        {showContent && (
+          <div className="flex flex-col gap-5">
+            {/* Header — single contract or unified */}
+            {showContractView && (
+              <div className="flex items-start justify-between gap-3">
+                <ContractHeader meta={contractMeta} events={events} />
+                {isInWatchlist ? (
+                  <span className="mt-1 flex shrink-0 items-center gap-1.5 rounded-lg border border-[#34d399]/20 bg-[#34d399]/5 px-3 py-1.5 text-[11px] font-medium text-[#34d399]">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 8.5l3.5 3.5L13 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Watching
+                  </span>
+                ) : (
                   <button
-                    onClick={() => setAddressSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                    onClick={handleAddToWatchlist}
+                    className="mt-1 flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[11px] font-medium text-muted transition-all hover:border-accent/30 hover:text-foreground"
+                    title="Add to watchlist"
                   >
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                     </svg>
+                    Watch
                   </button>
                 )}
               </div>
+            )}
 
-              <div className="flex items-center gap-2">
-                {/* Live toggle */}
+            {isAllMode && (
+              <div className="flex items-center gap-3">
+                <h2 className="font-display text-[15px] font-semibold text-foreground">
+                  All Contracts
+                </h2>
+                <span className="text-[12px] text-muted">
+                  {unifiedEvents.length} event{unifiedEvents.length !== 1 ? "s" : ""} from{" "}
+                  {watchlist.entries.length} contracts
+                </span>
+              </div>
+            )}
+
+            {/* Toolbar: filters, search, live toggle, view mode, export */}
+            <div className="flex flex-col gap-3">
+              {filterEventNames.length > 0 && (
+                <EventFilter
+                  eventNames={filterEventNames}
+                  activeFilter={activeFilter}
+                  onFilter={handleFilterChange}
+                />
+              )}
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {/* Address search */}
+                <div className="relative flex-1">
+                  <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted/50">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+                      <path d="M11.5 11.5L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={addressSearch}
+                    onChange={(e) => setAddressSearch(e.target.value)}
+                    placeholder="Filter by address in args..."
+                    className="focus-ring h-9 w-full rounded-lg border border-border bg-surface pl-8 pr-3 font-mono text-[11px] text-foreground placeholder:text-muted/40 transition-colors hover:border-accent/30 focus:border-accent"
+                    spellCheck={false}
+                  />
+                  {addressSearch && (
+                    <button
+                      onClick={() => setAddressSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Live toggle (single contract only) */}
+                  {!isAllMode && (
+                    <button
+                      onClick={() => {
+                        setIsLive(!isLive);
+                        setNewEventCount(0);
+                      }}
+                      aria-label={isLive ? "Disable live polling" : "Enable live polling"}
+                      className={`flex h-9 items-center gap-2 rounded-lg px-3 text-[11px] font-medium transition-all ${
+                        isLive
+                          ? "border border-[#34d399]/30 bg-[#34d399]/10 text-[#34d399]"
+                          : "border border-border bg-surface text-muted hover:border-accent/30 hover:text-foreground"
+                      }`}
+                    >
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          isLive ? "animate-pulse bg-[#34d399]" : "bg-muted/40"
+                        }`}
+                      />
+                      Live
+                      {newEventCount > 0 && (
+                        <span className="rounded bg-[#34d399] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          +{newEventCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {/* View mode toggle */}
+                  <div className="flex h-9 items-center rounded-lg border border-border bg-surface">
+                    <button
+                      onClick={() => {
+                        setViewMode("card");
+                        localStorage.setItem("eventwatch:viewMode", "card");
+                      }}
+                      className={`flex h-full items-center gap-1 rounded-l-lg px-2.5 text-[11px] transition-colors ${
+                        viewMode === "card"
+                          ? "bg-accent/10 text-accent"
+                          : "text-muted hover:text-foreground"
+                      }`}
+                      aria-label="Card view"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
+                        <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
+                        <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
+                        <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setViewMode("table");
+                        localStorage.setItem("eventwatch:viewMode", "table");
+                      }}
+                      className={`flex h-full items-center gap-1 rounded-r-lg px-2.5 text-[11px] transition-colors ${
+                        viewMode === "table"
+                          ? "bg-accent/10 text-accent"
+                          : "text-muted hover:text-foreground"
+                      }`}
+                      aria-label="Table view"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Export CSV */}
+                  <button
+                    onClick={handleExportCsv}
+                    disabled={displayEvents.length === 0}
+                    className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[11px] font-medium text-muted transition-all hover:border-accent/30 hover:text-foreground disabled:opacity-40"
+                    title="Export filtered events as CSV"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 2v8M4 7l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 12v2h12v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Active search indicator */}
+              {addressSearch && (
+                <p className="text-[11px] text-muted">
+                  Showing {displayEvents.length} event{displayEvents.length !== 1 ? "s" : ""}{" "}
+                  matching &ldquo;{addressSearch}&rdquo;
+                </p>
+              )}
+            </div>
+
+            {/* Analytics summary + panel */}
+            <AnalyticsSummary
+              events={displayEvents}
+              analyticsOpen={analyticsOpen}
+              onToggleAnalytics={() => setAnalyticsOpen((o) => !o)}
+            />
+            {analyticsOpen && (
+              <AnalyticsPanel
+                events={displayEvents}
+                isPaidUser={isPaidUser}
+                onUpgrade={() => setUpgradeOpen(true)}
+              />
+            )}
+
+            {/* Alerts toggle + panel */}
+            {auth?.status === "authenticated" && (
+              <>
                 <button
-                  onClick={() => {
-                    setIsLive(!isLive);
-                    setNewEventCount(0);
-                  }}
-                  className={`flex h-9 items-center gap-2 rounded-lg px-3 text-[11px] font-medium transition-all ${
-                    isLive
-                      ? "border border-[#34d399]/30 bg-[#34d399]/10 text-[#34d399]"
-                      : "border border-border bg-surface text-muted hover:border-accent/30 hover:text-foreground"
+                  onClick={() => setAlertsOpen((o) => !o)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all ${
+                    alertsOpen
+                      ? "border-accent/30 bg-accent/5 text-accent"
+                      : "border-border bg-surface text-muted hover:border-accent/30 hover:text-foreground"
                   }`}
                 >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      isLive ? "animate-pulse bg-[#34d399]" : "bg-muted/40"
-                    }`}
-                  />
-                  {isLive ? "Live" : "Live"}
-                  {newEventCount > 0 && (
-                    <span className="rounded bg-[#34d399] px-1.5 py-0.5 text-[10px] font-bold text-white">
-                      +{newEventCount}
-                    </span>
-                  )}
-                </button>
-
-                {/* Export CSV */}
-                <button
-                  onClick={handleExportCsv}
-                  disabled={filteredEvents.length === 0}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[11px] font-medium text-muted transition-all hover:border-accent/30 hover:text-foreground disabled:opacity-40"
-                  title="Export filtered events as CSV"
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 2v8M4 7l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M2 12v2h12v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  CSV
+                  {alertsOpen ? "Hide Alerts" : "Alerts"}
                 </button>
-              </div>
-            </div>
-
-            {/* Active search indicator */}
-            {addressSearch && (
-              <p className="text-[11px] text-muted">
-                Showing {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""} matching &ldquo;{addressSearch}&rdquo;
-              </p>
+                {alertsOpen && (
+                  <PremiumGate isPaid={isPaidUser} feature="Alerts" onUpgrade={() => setUpgradeOpen(true)}>
+                    <AlertsPanel
+                      watchlistEntries={watchlist.entries.map((e) => ({
+                        address: e.address,
+                        chain: e.chain,
+                        label: e.label,
+                      }))}
+                    />
+                  </PremiumGate>
+                )}
+              </>
             )}
+
+            <EventFeed
+              events={displayEvents}
+              chain={contractMeta?.chain ?? activeChain}
+              isLoading={showContractView ? eventsQuery.isLoading : false}
+              isLoadingMore={showContractView ? eventsQuery.isFetchingNextPage : false}
+              hasMore={showContractView ? (eventsQuery.hasNextPage ?? false) : false}
+              onLoadMore={handleLoadMore}
+              contractDecimals={isAllMode ? undefined : contractDecimals}
+              viewMode={viewMode}
+            />
           </div>
+        )}
 
-          <EventFeed
-            events={filteredEvents}
-            chain={contractMeta.chain}
-            isLoading={isFetchingEvents}
-            isLoadingMore={isLoadingMore}
-            hasMore={oldestBlock !== null && events.length > 0}
-            onLoadMore={handleLoadMore}
-          />
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!contractMeta && !isLoading && !error && !needsManualAbi && (
-        <div className="flex flex-col items-center gap-6 py-24 text-center">
-          <div className="relative">
-            <div className="animate-float h-20 w-20 rounded-3xl bg-gradient-to-br from-accent/20 via-accent/5 to-transparent p-[1px]">
-              <div className="flex h-full w-full items-center justify-center rounded-3xl bg-background">
-                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="text-accent">
-                  <path d="M16 4v24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <path d="M4 16h24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <circle cx="16" cy="16" r="6" stroke="currentColor" strokeWidth="1.5" />
-                  <circle cx="16" cy="16" r="12" stroke="currentColor" strokeWidth="1" opacity="0.2" />
-                  <circle cx="16" cy="16" r="2" fill="currentColor" opacity="0.8" />
-                </svg>
+        {/* Empty state */}
+        {!contractMeta && !isLoading && !displayError && !needsManualAbi && !isAllMode && (
+          <div className="flex flex-col items-center gap-6 py-24 text-center">
+            <div className="relative">
+              <div className="animate-float h-20 w-20 rounded-3xl bg-gradient-to-br from-accent/20 via-accent/5 to-transparent p-[1px]">
+                <div className="flex h-full w-full items-center justify-center rounded-3xl bg-background">
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="text-accent">
+                    <path d="M16 4v24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    <path d="M4 16h24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    <circle cx="16" cy="16" r="6" stroke="currentColor" strokeWidth="1.5" />
+                    <circle cx="16" cy="16" r="12" stroke="currentColor" strokeWidth="1" opacity="0.2" />
+                    <circle cx="16" cy="16" r="2" fill="currentColor" opacity="0.8" />
+                  </svg>
+                </div>
+              </div>
+              <div className="absolute inset-0 -z-10 blur-2xl">
+                <div className="h-full w-full rounded-full bg-accent/10" />
               </div>
             </div>
-            <div className="absolute inset-0 -z-10 blur-2xl">
-              <div className="h-full w-full rounded-full bg-accent/10" />
+            <div>
+              <p className="font-display text-[15px] font-medium text-foreground">
+                Paste a contract address to begin
+              </p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                Decode and explore smart contract events on
+                <br />
+                Ethereum, Arbitrum, and Polygon
+              </p>
             </div>
           </div>
-          <div>
-            <p className="font-display text-[15px] font-medium text-foreground">
-              Paste a contract address to begin
-            </p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-              Decode and explore smart contract events on
-              <br />
-              Ethereum, Arbitrum, and Polygon
-            </p>
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Loading skeleton during ABI fetch */}
-      {isFetchingAbi && !contractMeta && (
-        <div className="flex flex-col gap-3">
-          {[...Array(3)].map((_, i) => (
-            <div
-              key={i}
-              className="overflow-hidden rounded-xl border border-border bg-surface"
-              style={{ animationDelay: `${i * 100}ms` }}
-            >
-              <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-3">
-                <div className="h-5 w-16 rounded-md animate-shimmer" />
-                <div className="h-4 w-28 rounded-md animate-shimmer" />
+        {/* Loading skeleton during ABI fetch */}
+        {abiQuery.isLoading && !contractMeta && (
+          <div className="flex flex-col gap-3">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="overflow-hidden rounded-xl border border-border bg-surface"
+                style={{ animationDelay: `${i * 100}ms` }}
+              >
+                <div className="flex items-center gap-3 border-b border-border-subtle px-5 py-3">
+                  <div className="h-5 w-16 rounded-md animate-shimmer" />
+                  <div className="h-4 w-28 rounded-md animate-shimmer" />
+                </div>
+                <div className="flex flex-col gap-2.5 px-5 py-4">
+                  <div className="h-3.5 w-3/4 rounded animate-shimmer" />
+                  <div className="h-3.5 w-1/2 rounded animate-shimmer" />
+                </div>
               </div>
-              <div className="flex flex-col gap-2.5 px-5 py-4">
-                <div className="h-3.5 w-3/4 rounded animate-shimmer" />
-                <div className="h-3.5 w-1/2 rounded animate-shimmer" />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+    </DashboardLayout>
   );
 }

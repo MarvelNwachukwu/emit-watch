@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Outfit } from "next/font/google";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { Providers } from "@/components/Providers";
+import { AppHeader } from "@/components/AppHeader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,39 +50,18 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} antialiased`}
       >
-        <div className="mx-auto flex min-h-screen max-w-2xl flex-col px-5 pb-12 pt-8 sm:px-8">
-          {/* Header */}
-          <header className="mb-10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Logo mark — stylized radar/pulse */}
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="text-accent">
-                  <path d="M9 1v16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <path d="M1 9h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <circle cx="9" cy="9" r="3" stroke="currentColor" strokeWidth="1.5" />
-                  <circle cx="9" cy="9" r="7" stroke="currentColor" strokeWidth="1" opacity="0.3" />
-                  <circle cx="9" cy="9" r="1" fill="currentColor" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="font-display text-[15px] font-semibold tracking-tight text-foreground">
-                  Event Watch
-                </h1>
-                <p className="text-[10px] uppercase tracking-[0.15em] text-muted">
-                  Contract Event Listener
-                </p>
-              </div>
-            </div>
-            <ThemeToggle />
-          </header>
+        <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-5 pb-12 pt-8 sm:px-8">
+          <Providers>
+            <AppHeader />
 
-          {/* Accent line */}
-          <div className="mb-8 h-px w-full bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
+            {/* Accent line */}
+            <div className="mx-auto mb-8 h-px w-full max-w-2xl bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
 
-          <main className="flex-1">{children}</main>
+            <main className="flex-1">{children}</main>
+          </Providers>
 
           {/* Footer */}
-          <footer className="mt-16 border-t border-border pt-6 pb-2">
+          <footer className="mx-auto mt-16 w-full max-w-2xl border-t border-border pt-6 pb-2">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               {/* Brand */}
               <div className="flex items-center gap-2.5">
