@@ -13,7 +13,7 @@ CREATE TABLE watchlist_entries (
   address TEXT NOT NULL,
   chain TEXT NOT NULL,
   label TEXT NOT NULL DEFAULT '',
-  added_at TIMESTAMPTZ DEFAULT now(),
+  added_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE UNIQUE INDEX idx_watchlist_unique ON watchlist_entries (user_id, lower(address), chain);
 

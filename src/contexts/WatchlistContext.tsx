@@ -103,7 +103,6 @@ export function WatchlistProvider({ children }: { children: ReactNode }) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
         },
         body: JSON.stringify({
           entries: localState.entries.map((e) => ({

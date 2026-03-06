@@ -55,7 +55,7 @@ export function AlertHistory({ getAccessToken, userId }: Props) {
         const res = await fetch(`/api/alerts/history?${params.toString()}`, {
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-user-id": userId,
+
           },
         });
 
@@ -94,7 +94,7 @@ export function AlertHistory({ getAccessToken, userId }: Props) {
         const res = await fetch("/api/alerts", {
           headers: {
             Authorization: `Bearer ${token}`,
-            "x-user-id": userId,
+
           },
         });
         if (res.ok && !cancelled) {

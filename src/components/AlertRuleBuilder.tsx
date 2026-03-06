@@ -64,7 +64,6 @@ export function AlertRuleBuilder({
       const res = await fetch("/api/alerts/telegram/status", {
         headers: {
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
         },
       });
       if (res.ok) {
@@ -92,7 +91,7 @@ export function AlertRuleBuilder({
       case "value_threshold":
         return { field: thresholdField, operator: thresholdOperator, threshold: thresholdValue };
       case "address_match":
-        return { field: "to", address: matchAddress.toLowerCase() };
+        return { addressField: "to", targetAddress: matchAddress.toLowerCase() };
     }
   }
 
@@ -118,7 +117,6 @@ export function AlertRuleBuilder({
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
         },
         body: JSON.stringify({
           contractAddress: selectedEntry.address,

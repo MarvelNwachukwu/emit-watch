@@ -57,7 +57,7 @@ export function AlertsPanel({ watchlistEntries }: Props) {
       const res = await fetch("/api/alerts", {
         headers: {
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
+
         },
       });
 
@@ -86,7 +86,7 @@ export function AlertsPanel({ watchlistEntries }: Props) {
       const res = await fetch("/api/alerts/telegram/status", {
         headers: {
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
+
         },
       });
       if (res.ok) {
@@ -115,7 +115,7 @@ export function AlertsPanel({ watchlistEntries }: Props) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
+
         },
         body: JSON.stringify({ enabled: !currentEnabled }),
       });
@@ -143,7 +143,7 @@ export function AlertsPanel({ watchlistEntries }: Props) {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
+
         },
       });
 
@@ -167,7 +167,7 @@ export function AlertsPanel({ watchlistEntries }: Props) {
       case "value_threshold":
         return `${cv?.field ?? "value"} >= ${cv?.threshold ?? "?"}`;
       case "address_match":
-        return `Address: ${truncateAddress(cv?.address || "")}`;
+        return `Address: ${truncateAddress(cv?.targetAddress || "")}`;
       default:
         return rule.condition_type;
     }

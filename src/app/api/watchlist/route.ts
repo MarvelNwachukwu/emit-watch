@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { resolveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 // GET /api/watchlist — list user's watchlist
 export async function GET(request: Request) {
   try {
-    await verifyAuth(request.headers.get("authorization"));
-    const userId = request.headers.get("x-user-id");
-    if (!userId) {
-      return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
-    }
+    const userId = await resolveUserId(request.headers.get("authorization"));
 
     const result = await db.query(
       `SELECT id, address, chain, label, added_at FROM watchlist_entries
@@ -27,11 +23,7 @@ export async function GET(request: Request) {
 // POST /api/watchlist — add entry
 export async function POST(request: Request) {
   try {
-    await verifyAuth(request.headers.get("authorization"));
-    const userId = request.headers.get("x-user-id");
-    if (!userId) {
-      return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
-    }
+    const userId = await resolveUserId(request.headers.get("authorization"));
 
     const { address, chain, label } = await request.json();
     if (!address || !chain) {

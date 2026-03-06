@@ -35,7 +35,6 @@ export function TelegramLinkFlow({ onLinked, getAccessToken, userId }: Props) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-          "x-user-id": userId,
         },
         body: JSON.stringify({ code: trimmed }),
       });

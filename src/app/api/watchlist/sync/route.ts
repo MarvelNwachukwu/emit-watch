@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { resolveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 // POST /api/watchlist/sync — merge localStorage entries into DB on first sign-in
 export async function POST(request: Request) {
   try {
-    await verifyAuth(request.headers.get("authorization"));
-    const userId = request.headers.get("x-user-id");
-    if (!userId) {
-      return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
-    }
+    const userId = await resolveUserId(request.headers.get("authorization"));
 
     const { entries } = await request.json();
     if (!Array.isArray(entries)) {

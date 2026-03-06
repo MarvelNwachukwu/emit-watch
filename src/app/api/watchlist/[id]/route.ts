@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyAuth } from "@/lib/auth";
+import { resolveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 // DELETE /api/watchlist/:id
@@ -8,11 +8,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await verifyAuth(request.headers.get("authorization"));
-    const userId = request.headers.get("x-user-id");
-    if (!userId) {
-      return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
-    }
+    const userId = await resolveUserId(request.headers.get("authorization"));
 
     const { id } = await params;
 
@@ -38,11 +34,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await verifyAuth(request.headers.get("authorization"));
-    const userId = request.headers.get("x-user-id");
-    if (!userId) {
-      return NextResponse.json({ error: "Missing user ID" }, { status: 400 });
-    }
+    const userId = await resolveUserId(request.headers.get("authorization"));
 
     const { id } = await params;
     const { label } = await request.json();
